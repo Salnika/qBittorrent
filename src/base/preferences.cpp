@@ -1503,6 +1503,19 @@ void Preferences::setConfirmRemoveAllTags(const bool enabled)
     setValue(u"Preferences/Advanced/confirmRemoveAllTags"_s, enabled);
 }
 
+QStringList Preferences::autoRemoveTrackerGlobs() const
+{
+    return value<QStringList>(u"Preferences/Advanced/AutoRemoveTrackerGlobs"_s, {});
+}
+
+void Preferences::setAutoRemoveTrackerGlobs(const QStringList &globs)
+{
+    if (globs == autoRemoveTrackerGlobs())
+        return;
+
+    setValue(u"Preferences/Advanced/AutoRemoveTrackerGlobs"_s, globs);
+}
+
 bool Preferences::confirmMergeTrackers() const
 {
     return value(u"GUI/ConfirmActions/MergeTrackers"_s, true);

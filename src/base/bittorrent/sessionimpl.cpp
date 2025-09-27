@@ -2484,6 +2484,10 @@ bool SessionImpl::removeTorrent(const TorrentID &id, const TorrentRemoveOption d
     const QString torrentName = torrent->name();
 
     qDebug("Deleting torrent with ID: %s", qUtf8Printable(torrentID.toString()));
+
+    // Cleanup auto-removed trackers bookkeeping
+    m_autoRemovedTrackers.remove(torrent);
+    m_autoRemovalApplied.remove(torrent);
     emit torrentAboutToBeRemoved(torrent);
 
     if (const InfoHash infoHash = torrent->infoHash(); infoHash.isHybrid())
@@ -5186,6 +5190,42 @@ qint64 SessionImpl::freeDiskSpace() const
     return m_freeDiskSpace;
 }
 
+QHash<QString, int> SessionImpl::autoRemovedTrackers(const Torrent *torrent) const
+{
+    const auto *impl = static_cast<const TorrentImpl *>(torrent);
+    return m_autoRemovedTrackers.value(const_cast<TorrentImpl *>(impl));
+}
+
+void SessionImpl::restoreAutoRemovedTrackers(Torrent *torrent, const QStringList &urls)
+{
+    auto *impl = static_cast<TorrentImpl *>(torrent);
+    if (!impl)
+        return;
+
+    const auto it = m_autoRemovedTrackers.find(impl);
+    if (it == m_autoRemovedTrackers.end())
+        return;
+
+    QList<TrackerEntry> entries;
+    entries.reserve(urls.size());
+
+    for (const QString &url : urls)
+    {
+        const int tier = it->value(url, 0);
+        entries.append(TrackerEntry{.url = url, .tier = tier});
+        it->remove(url);
+    }
+
+    if (it->isEmpty())
+        m_autoRemovedTrackers.erase(it);
+
+    if (!entries.isEmpty())
+    {
+        impl->addTrackers(entries);
+        emit trackersChanged(impl);
+    }
+}
+
 bool SessionImpl::isListening() const
 {
     return m_nativeSessionExtension->isSessionListening();
@@ -6299,6 +6339,52 @@ void SessionImpl::handleStateUpdateAlert(const lt::state_update_alert *alert)
 
         torrent->handleStateUpdate(status);
         updatedTorrents.push_back(torrent);
+
+        // Auto-remove trackers matching user globs once progress >= 0.1%
+        // Keep it simple: run once per torrent per session.
+        if (!m_autoRemovalApplied.contains(torrent))
+        {
+            const QStringList globs = Preferences::instance()->autoRemoveTrackerGlobs();
+            if (!globs.isEmpty())
+            {
+                const qreal prog = torrent->progress();
+                if (prog >= 0.001)
+                {
+                    const QList<TrackerEntryStatus> trackers = torrent->trackers();
+                    QStringList toRemove;
+                    QHash<QString, int> &store = m_autoRemovedTrackers[torrent];
+
+                    auto matches = [&globs](const QString &text) -> bool
+                    {
+                        for (const QString &pattern : globs)
+                        {
+                            const QRegularExpression re(QRegularExpression::wildcardToRegularExpression(pattern)
+                                    , QRegularExpression::CaseInsensitiveOption);
+                            if (re.match(text).hasMatch())
+                                return true;
+                        }
+                        return false;
+                    };
+
+                    for (const TrackerEntryStatus &st : trackers)
+                    {
+                        if (matches(st.url))
+                        {
+                            toRemove << st.url;
+                            store.insert(st.url, st.tier);
+                        }
+                    }
+
+                    if (!toRemove.isEmpty())
+                    {
+                        torrent->removeTrackers(toRemove);
+                        emit trackersChanged(torrent);
+                    }
+
+                    m_autoRemovalApplied.insert(torrent);
+                }
+            }
+        }
     }
 
     if (!updatedTorrents.isEmpty())

@@ -458,6 +458,10 @@ namespace BitTorrent
 
         qint64 freeDiskSpace() const override;
 
+        // Auto-removed trackers management (UI assistance)
+        QHash<QString, int> autoRemovedTrackers(const Torrent *torrent) const override;
+        void restoreAutoRemovedTrackers(Torrent *torrent, const QStringList &urls) override;
+
         // Torrent interface
         void handleTorrentResumeDataRequested(const TorrentImpl *torrent);
         void handleTorrentShareLimitChanged(TorrentImpl *torrent);
@@ -873,6 +877,11 @@ namespace BitTorrent
         QElapsedTimer m_wakeupCheckTimestamp;
 
         QList<TorrentImpl *> m_pendingFinishedTorrents;
+
+        // Auto-removed trackers (by URL) per torrent and their original tier
+        QHash<TorrentImpl *, QHash<QString, int>> m_autoRemovedTrackers;
+        // Track torrents already processed for auto-removal trigger
+        QSet<TorrentImpl *> m_autoRemovalApplied;
 
         FreeDiskSpaceChecker *m_freeDiskSpaceChecker = nullptr;
         QTimer *m_freeDiskSpaceCheckingTimer = nullptr;

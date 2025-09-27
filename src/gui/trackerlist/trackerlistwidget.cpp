@@ -238,6 +238,29 @@ void TrackerListWidget::copyTrackerUrl()
 }
 
 
+void TrackerListWidget::enableSelectedTrackers()
+{
+    if (!torrent())
+        return;
+
+    const QModelIndexList selectedTrackerIndexes = getSelectedTrackerRows();
+    if (selectedTrackerIndexes.isEmpty())
+        return;
+
+    QStringList urlsToEnable;
+    const auto disabled = BitTorrent::Session::instance()->autoRemovedTrackers(torrent());
+    for (const QModelIndex &index : selectedTrackerIndexes)
+    {
+        const QString trackerURL = index.siblingAtColumn(TrackerListModel::COL_URL).data().toString();
+        if (disabled.contains(trackerURL))
+            urlsToEnable.append(trackerURL);
+    }
+
+    if (!urlsToEnable.isEmpty())
+        BitTorrent::Session::instance()->restoreAutoRemovedTrackers(torrent(), urlsToEnable);
+}
+
+
 void TrackerListWidget::deleteSelectedTrackers()
 {
     if (!torrent())
@@ -373,6 +396,20 @@ void TrackerListWidget::showTrackerListMenu()
                 , this, &TrackerListWidget::deleteSelectedTrackers);
         menu->addAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("Copy tracker URL")
                 , this, &TrackerListWidget::copyTrackerUrl);
+        // Enable auto-disabled trackers
+        const auto selected = getSelectedTrackerRows();
+        bool hasDisabled = false;
+        const auto disabled = BitTorrent::Session::instance()->autoRemovedTrackers(torrent());
+        for (const QModelIndex &index : selected)
+        {
+            const QString url = index.siblingAtColumn(TrackerListModel::COL_URL).data().toString();
+            if (disabled.contains(url)) { hasDisabled = true; break; }
+        }
+        if (hasDisabled)
+        {
+            menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Enable tracker(s)"), this
+                    , &TrackerListWidget::enableSelectedTrackers);
+        }
         if (!torrent()->isStopped())
         {
             menu->addAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"view-refresh"_s), tr("Force reannounce to selected trackers")

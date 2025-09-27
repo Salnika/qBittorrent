@@ -323,6 +323,9 @@ public:
     void setConfirmTorrentRecheck(bool enabled);
     bool confirmRemoveAllTags() const;
     void setConfirmRemoveAllTags(bool enabled);
+    // Auto removal of trackers matching globs
+    QStringList autoRemoveTrackerGlobs() const;
+    void setAutoRemoveTrackerGlobs(const QStringList &globs);
     bool confirmMergeTrackers() const;
     void setConfirmMergeTrackers(bool enabled);
     bool confirmRemoveTrackerFromAllTorrents() const;

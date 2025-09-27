@@ -42,6 +42,7 @@
 
 #include <QColor>
 #include <QDateTime>
+#include <QFont>
 #include <QFuture>
 #include <QList>
 #include <QPointer>
@@ -380,6 +381,16 @@ void TrackerListModel::populate()
     for (const BitTorrent::TrackerEntryStatus &status : trackers)
         addTrackerItem(status);
 
+    // Add auto-disabled trackers (kept for UI with strikeout)
+    const QHash<QString, int> disabled = m_btSession->autoRemovedTrackers(m_torrent);
+    for (auto it = disabled.cbegin(); it != disabled.cend(); ++it)
+    {
+        const QString &url = it.key();
+        auto &itemsByName = m_items->get<ByName>();
+        if (itemsByName.find(url) == itemsByName.end())
+            m_items->get<0>().push_back(std::make_shared<Item>(url, tr(STR_TORRENT_DISABLED)));
+    }
+
     m_announceTimestamp = BitTorrent::AnnounceTimePoint::clock::now();
     m_announceRefreshTimer->start(ANNOUNCE_TIME_REFRESH_INTERVAL);
 }
@@ -591,6 +602,20 @@ QVariant TrackerListModel::data(const QModelIndex &index, const int role) const
             return QColorConstants::Svg::grey;
         return {};
 
+    case Qt::FontRole:
+        if (!index.parent().isValid() && (index.row() >= STICKY_ROW_COUNT))
+        {
+            const QString url = this->index(index.row(), COL_URL).data().toString();
+            const auto disabled = m_btSession->autoRemovedTrackers(m_torrent);
+            if (disabled.contains(url))
+            {
+                QFont f;
+                f.setStrikeOut(true);
+                return f;
+            }
+        }
+        return {};
+
     case Qt::DisplayRole:
     case Qt::ToolTipRole:
         switch (index.column())
@@ -602,6 +627,7 @@ QVariant TrackerListModel::data(const QModelIndex &index, const int role) const
         case COL_PROTOCOL:
             return isEndpoint ? (u'v' + QString::number(itemPtr->btVersion)) : QString();
         case COL_STATUS:
+        {
             if (isEndpoint)
                 return itemPtr->statusText();
             if (index.row() == ROW_DHT)
@@ -610,7 +636,16 @@ QVariant TrackerListModel::data(const QModelIndex &index, const int role) const
                 return statusPeX(m_torrent);
             if (index.row() == ROW_LSD)
                 return statusLSD(m_torrent);
+
+            if (!index.parent().isValid() && (index.row() >= STICKY_ROW_COUNT))
+            {
+                const QString url = this->index(index.row(), COL_URL).data().toString();
+                const auto disabled = m_btSession->autoRemovedTrackers(m_torrent);
+                if (disabled.contains(url))
+                    return tr(STR_TORRENT_DISABLED);
+            }
             return itemPtr->statusText();
+        }
         case COL_PEERS:
             return prettyCount(itemPtr->numPeers);
         case COL_SEEDS:
@@ -756,6 +791,18 @@ void TrackerListModel::onTrackersChanged()
         }
     }
 
+    // Ensure auto-disabled trackers stay listed
+    const QHash<QString, int> disabled = m_btSession->autoRemovedTrackers(m_torrent);
+    for (auto it = disabled.cbegin(); it != disabled.cend(); ++it)
+    {
+        const QString &url = it.key();
+        trackerItemIDs.insert(url);
+
+        auto &itemsByName = m_items->get<ByName>();
+        if (const auto &iter = itemsByName.find(url); iter == itemsByName.end())
+            newTrackerItems.emplace_back(std::make_shared<Item>(url, tr(STR_TORRENT_DISABLED)));
+    }
+
     auto it = m_items->begin();
     while (it != m_items->end())
     {
@@ -781,6 +828,8 @@ void TrackerListModel::onTrackersChanged()
         endInsertRows();
     }
 }
+
+// Note: the rest of the method is defined above; augment roles below.
 
 void TrackerListModel::onTrackersUpdated(const QHash<QString, BitTorrent::TrackerEntryStatus> &updatedTrackers)
 {

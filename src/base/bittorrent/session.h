@@ -452,6 +452,10 @@ namespace BitTorrent
         virtual TorrentContentRemoveOption torrentContentRemoveOption() const = 0;
         virtual void setTorrentContentRemoveOption(TorrentContentRemoveOption option) = 0;
 
+        // Auto-removed trackers management (UI assistance)
+        virtual QHash<QString, int> autoRemovedTrackers(const Torrent *torrent) const = 0;
+        virtual void restoreAutoRemovedTrackers(Torrent *torrent, const QStringList &urls) = 0;
+
         virtual bool isRestored() const = 0;
 
         virtual bool isPaused() const = 0;

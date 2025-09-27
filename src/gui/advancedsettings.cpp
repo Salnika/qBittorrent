@@ -34,6 +34,7 @@
 #include <QHeaderView>
 #include <QHostAddress>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QNetworkInterface>
 
 #include "base/bittorrent/session.h"
@@ -92,6 +93,8 @@ namespace
 #endif
         CONFIRM_REMOVE_ALL_TAGS,
         CONFIRM_REMOVE_TRACKER_FROM_ALL_TORRENTS,
+        // Tracker auto-removal (custom)
+        AUTO_REMOVE_TRACKER_GLOBS,
         REANNOUNCE_WHEN_ADDRESS_CHANGED,
         DOWNLOAD_TRACKER_FAVICON,
         SAVE_PATH_HISTORY_LENGTH,
@@ -300,6 +303,18 @@ void AdvancedSettings::saveAdvancedSettings() const
     // Peer resolution
     pref->resolvePeerCountries(m_checkBoxResolveCountries.isChecked());
     pref->resolvePeerHostNames(m_checkBoxResolveHosts.isChecked());
+    // Auto-remove trackers globs
+    {
+        QStringList globs;
+        const auto lines = m_plainTextAutoRemoveTrackers.toPlainText().split(u'\n');
+        globs.reserve(lines.size());
+        for (QString s : lines)
+        {
+            s = s.trimmed();
+            if (!s.isEmpty()) globs << s;
+        }
+        pref->setAutoRemoveTrackerGlobs(globs);
+    }
     // Network interface
     session->setNetworkInterface(m_comboBoxInterface.currentData().toString());
     session->setNetworkInterfaceName((m_comboBoxInterface.currentIndex() == 0)
@@ -786,6 +801,10 @@ void AdvancedSettings::loadAdvancedSettings()
     // Resolve peer hosts
     m_checkBoxResolveHosts.setChecked(pref->resolvePeerHostNames());
     addRow(RESOLVE_HOSTS, tr("Resolve peer host names"), &m_checkBoxResolveHosts);
+    // Auto-remove trackers globs
+    m_plainTextAutoRemoveTrackers.setPlaceholderText(tr("One pattern per line, e.g. *.example.org/*"));
+    m_plainTextAutoRemoveTrackers.setPlainText(pref->autoRemoveTrackerGlobs().join(u"\n"_s));
+    addRow(AUTO_REMOVE_TRACKER_GLOBS, tr("Automatically remove trackers (globs)"), &m_plainTextAutoRemoveTrackers);
     // Network interface
     m_comboBoxInterface.addItem(tr("Any interface", "i.e. Any network interface"), QString());
     for (const QNetworkInterface &iface : asConst(QNetworkInterface::allInterfaces()))
@@ -1027,4 +1046,6 @@ void AdvancedSettings::addRow(const int row, const QString &text, T *widget)
         connect(widget, qOverload<int>(&QComboBox::currentIndexChanged), this, &AdvancedSettings::settingsChanged);
     else if constexpr (std::is_same_v<T, QLineEdit>)
         connect(widget, &QLineEdit::textChanged, this, &AdvancedSettings::settingsChanged);
+    else if constexpr (std::is_same_v<T, QPlainTextEdit>)
+        connect(widget, &QPlainTextEdit::textChanged, this, &AdvancedSettings::settingsChanged);
 }

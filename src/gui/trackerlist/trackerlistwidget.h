@@ -58,6 +58,7 @@ public slots:
     void reannounceSelected();
     void deleteSelectedTrackers();
     void editSelectedTracker();
+    void enableSelectedTrackers();
     void showTrackerListMenu();
 
 private:
